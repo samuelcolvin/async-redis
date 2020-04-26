@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - '**'
+  pull_request: {}
+
+jobs:
+  test:
+    name: test py${{ matrix.python-version }} on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu]
+        python-version: ['3.7', '3.8']
+
+    env:
+      PYTHON: ${{ matrix.python-version }}
+      OS: ${{ matrix.os }}
+
+    runs-on: ${{ format('{0}-latest', matrix.os) }}
+
+    services:
+      redis:
+        image: redis:5
+        ports:
+        - 6379:6379
+        options: --entrypoint redis-server
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: set up python
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: install dependencies
+      run: |
+        make install
+        pip freeze
+
+    - name: lint
+      run: make lint
+
+#    - name: mypy
+#      run: make mypy
+
+    - name: test
+      run: |
+        make test
+        coverage xml
+
+    - uses: samuelcolvin/codecov-action@env-vars
+      with:
+        file: ./coverage.xml
+        env_vars: PYTHON,OS
