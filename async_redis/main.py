@@ -1,9 +1,9 @@
 import asyncio
-from typing import Any, Optional, Generator
+from typing import Any, Generator, Optional
 
-from .connection import RawConnection, create_raw_connection, ConnectionSettings
 from .commands import AbstractCommands
-from .typing import CommandArgs, DecodeType
+from .connection import ConnectionSettings, RawConnection, create_raw_connection
+from .typing import CommandArgs, Decoders
 
 __all__ = 'Redis', 'connect'
 
@@ -12,10 +12,12 @@ class Redis(AbstractCommands):
     def __init__(self, raw_connection: RawConnection):
         self._conn = raw_connection
 
-    async def execute(self, args: CommandArgs, *, decode: DecodeType = None, ok: bool = False) -> Any:
-        r = await self._conn.execute(args, decode_mode=decode)
-        if ok and r != b'OK':
-            raise RuntimeError(f'unexpected result {r!r}')
+    async def execute(self, args: CommandArgs, decoder: Decoders) -> Any:
+        r = await self._conn.execute(args, decoder=decoder)
+        if decoder == Decoders.ok:
+            if r != b'OK':
+                raise RuntimeError(f'unexpected result {r!r}')
+            return None
         else:
             return r
 
@@ -53,7 +55,13 @@ class RedisConnector:
                 self.redis = None
 
 
-def connect(connection_settings: Optional[ConnectionSettings] = None, *, host: str = None, port: int = None, database: int = None) -> RedisConnector:
+def connect(
+    connection_settings: Optional[ConnectionSettings] = None,
+    *,
+    host: str = None,
+    port: int = None,
+    database: int = None,
+) -> RedisConnector:
     if connection_settings:
         conn_settings = connection_settings
     else:

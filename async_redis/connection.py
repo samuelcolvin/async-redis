@@ -1,10 +1,10 @@
-from asyncio import open_connection, StreamReader, StreamWriter
+from asyncio import StreamReader, StreamWriter, open_connection
 from dataclasses import dataclass
-from typing import Union, Sequence, List, Optional
+from typing import List, Optional, Sequence, Union
 
 import hiredis
 
-from .typing import CommandArgs, DecodeType, ResultType
+from .typing import CommandArgs, Decoders, ResultType
 
 __all__ = 'ConnectionSettings', 'create_raw_connection', 'RawConnection'
 
@@ -39,6 +39,7 @@ class RawConnection:
 
     You probably don't want to use this directly
     """
+
     __slots__ = '_reader', '_writer', '_encoding', '_hi_raw', '_hi_enc'
 
     def __init__(self, reader: StreamReader, writer: StreamWriter, encoding: str):
@@ -48,44 +49,42 @@ class RawConnection:
         self._hi_raw = hiredis.Reader()
         self._hi_enc = hiredis.Reader(encoding=encoding)
 
-    async def execute(self, args: CommandArgs, *, decode_mode: DecodeType = None) -> ResultType:
+    async def execute(self, args: CommandArgs, decoder: Decoders) -> ResultType:
         buf = bytearray()
         self._encode_command(buf, args)
         self._writer.write(buf)
         await self._writer.drain()
-        return await self._read_result(decode_mode)
+        return await self._read_result(decoder)
 
-    async def execute_many(self, commands: Sequence[CommandArgs]) -> List[ResultType]:
+    async def execute_many(self, commands: Sequence[CommandArgs], decoder: Decoders) -> List[ResultType]:
         buf = bytearray()
         for args in commands:
             self._encode_command(buf, args)
         self._writer.write(buf)
         await self._writer.drain()
-        return [await self._read_result(None) for _ in range(len(commands))]
+        return [await self._read_result(decoder) for _ in range(len(commands))]
 
     async def close(self):
         self._writer.close()
         await self._writer.wait_closed()
 
-    async def _read_result(self, decode_mode: DecodeType) -> ResultType:
-        hi = self._hi_enc if decode_mode == 'str' else self._hi_raw
+    async def _read_result(self, decoder: Decoders) -> ResultType:
+        hi = self._hi_enc if decoder == Decoders.str else self._hi_raw
         result = False
         while result is False:
             raw_line = await self._reader.readline()
             hi.feed(raw_line)
             result = hi.gets()
-        if decode_mode == 'int':
-            if result.__class__ == bytes:
-                return int(result)
-            else:
-                return [int(r) for r in result]
-        elif decode_mode == 'float':
-            if result.__class__ == bytes:
-                return float(result)
-            else:
-                return [float(r) for r in result]
-        else:
+
+        try:
+            func = decoder.func()
+        except KeyError:
             return result
+        else:
+            if result.__class__ == bytes:
+                return func(result)
+            else:
+                return [func(r) for r in result]
 
     def _encode_command(self, buf: bytearray, args: CommandArgs) -> None:
         """
