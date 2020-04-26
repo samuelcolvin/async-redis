@@ -1,7 +1,13 @@
+import sys
 from enum import IntEnum
 from typing import Any, Callable, List, Sequence, Union
 
-__all__ = 'ArgType', 'CommandArgs', 'Decoders', 'ResultType'
+__all__ = 'Literal', 'ArgType', 'CommandArgs', 'Decoders', 'ResultType'
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 ArgType = Union[bytes, bytearray, str, int, float]
 CommandArgs = Sequence[ArgType]

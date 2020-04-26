@@ -67,7 +67,8 @@ setup(
     python_requires='>=3.7',
     zip_safe=False,
     install_requires=[
-        'hiredis>=1.0.1'
+        'hiredis>=1.0.1',
+        'typing-extensions>=3.7;python_version<"3.8"'
     ],
     ext_modules=ext_modules,
 )

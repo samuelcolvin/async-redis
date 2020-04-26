@@ -1,7 +1,7 @@
 from abc import abstractmethod
-from typing import Any, Coroutine, List, Literal, Tuple, TypeVar, Union
+from typing import Any, Coroutine, List, Tuple, TypeVar, Union
 
-from .typing import ArgType, CommandArgs, Decoders
+from .typing import ArgType, CommandArgs, Decoders, Literal
 
 __all__ = ('AbstractCommands',)
 
