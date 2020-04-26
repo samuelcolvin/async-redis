@@ -20,6 +20,7 @@ jobs:
     env:
       PYTHON: ${{ matrix.python-version }}
       OS: ${{ matrix.os }}
+      COMPILED: false
 
     runs-on: ${{ format('{0}-latest', matrix.os) }}
 
@@ -46,8 +47,8 @@ jobs:
     - name: lint
       run: make lint
 
-#    - name: mypy
-#      run: make mypy
+    - name: mypy
+      run: make mypy
 
     - name: test
       run: |
@@ -57,4 +58,23 @@ jobs:
     - uses: samuelcolvin/codecov-action@env-vars
       with:
         file: ./coverage.xml
-        env_vars: PYTHON,OS
+        env_vars: PYTHON,OS,COMPILED
+
+    - name: compile
+      run: |
+        make compile-trace
+        python -c "import sys, async_redis.version; print('compiled:', async_redis.version.COMPILED); sys.exit(0 if async_redis.version.COMPILED else 1)"
+        ls -alh
+        ls -alh async_redis/
+
+    - name: test compiled
+      run: |
+        make test
+        coverage xml
+
+    - uses: samuelcolvin/codecov-action@env-vars
+      with:
+        file: ./coverage.xml
+        env_vars: PYTHON,OS,COMPILED
+      env:
+        COMPILED: true

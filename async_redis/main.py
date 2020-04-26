@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, Generator, Optional
+from types import TracebackType
+from typing import Any, Generator, Optional, Type
 
 from .commands import AbstractCommands
 from .connection import ConnectionSettings, RawConnection, create_raw_connection
@@ -48,7 +49,9 @@ class RedisConnector:
     async def __aenter__(self) -> Redis:
         return await self.open()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self, exc_type: Optional[Type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
+    ) -> None:
         async with self.lock:
             if self.redis is not None:
                 await self.redis.close()
@@ -66,6 +69,6 @@ def connect(
         conn_settings = connection_settings
     else:
         kwargs = dict(host=host, port=port, database=database)
-        conn_settings = ConnectionSettings(**{k: v for k, v in kwargs.items() if v is not None})
+        conn_settings = ConnectionSettings(**{k: v for k, v in kwargs.items() if v is not None})  # type: ignore
 
     return RedisConnector(conn_settings)

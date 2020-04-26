@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Coroutine, List, Literal, Sequence, Tuple, TypeVar, Union
+from typing import Any, Coroutine, List, Literal, Tuple, TypeVar, Union
 
 from .typing import ArgType, CommandArgs, Decoders
 
@@ -28,13 +28,12 @@ class AbstractCommands:
         """
         Count set bits in a string.
         """
+        command = [b'BITCOUNT', key]
         if start is not None and end is not None:
-            args = (start, end)
-        elif start is None and end is None:
-            args = ()
-        else:
+            command.extend([start, end])
+        elif not (start is None and end is None):
             raise TypeError('both start and stop must be specified, or neither')
-        return self.execute((b'BITCOUNT', key, *args), Decoders.int)
+        return self.execute(command, Decoders.int)
 
     # TODO bitfield
 
@@ -89,7 +88,7 @@ class AbstractCommands:
         """
         return self.execute((b'GETRANGE', key, start, end), Decoders.str if decode else Decoders.bytes)
 
-    def getset(self, key: ArgType, value, *, decode: bool = True) -> Result[str]:
+    def getset(self, key: ArgType, value: ArgType, *, decode: bool = True) -> Result[str]:
         """
         Set the string value of a key and return its old value.
         """
@@ -113,37 +112,37 @@ class AbstractCommands:
         """
         return self.execute((b'INCRBYFLOAT', key, increment), Decoders.float)
 
-    def mget(self, key: ArgType, *keys, decode: bool = True) -> Result[str]:
+    def mget(self, key: ArgType, *keys: ArgType, decode: bool = True) -> Result[str]:
         """
         Get the values of all the given keys.
         """
         return self.execute((b'MGET', key, *keys), Decoders.str if decode else Decoders.bytes)
 
-    def mset(self, *args: Sequence[Tuple[ArgType, ArgType]], **kwargs: ArgType) -> Result[None]:
+    def mset(self, *args: Tuple[ArgType, ArgType], **kwargs: ArgType) -> Result[None]:
         """
         Set multiple keys to multiple values or unpack dict to keys & values.
         """
         command: List[ArgType] = [b'MSET']
-        for k, v in args:
-            command.extend([k, v])
-        for k, v in kwargs.items():
-            command.extend([k, v])
+        for k1, v1 in args:
+            command.extend([k1, v1])
+        for k2, v2 in kwargs.items():
+            command.extend([k2, v2])
 
         return self.execute(command, Decoders.ok)
 
-    def msetnx(self, *args: Sequence[Tuple[ArgType, ArgType]], **kwargs: ArgType) -> Result[int]:
+    def msetnx(self, *args: Tuple[ArgType, ArgType], **kwargs: ArgType) -> Result[int]:
         """
         Set multiple keys to multiple values, only if none of the keys exist.
         """
         command: List[ArgType] = [b'MSETNX']
-        for k, v in args:
-            command.extend([k, v])
-        for k, v in kwargs.items():
-            command.extend([k, v])
+        for k1, v1 in args:
+            command.extend([k1, v1])
+        for k2, v2 in kwargs.items():
+            command.extend([k2, v2])
 
         return self.execute(command, Decoders.int)
 
-    def psetex(self, key: ArgType, milliseconds: int, value: ArgType):
+    def psetex(self, key: ArgType, milliseconds: int, value: ArgType) -> Result[None]:
         """
         Set the value and expiration in milliseconds of a key.
         """
@@ -180,7 +179,7 @@ class AbstractCommands:
         """
         return self.execute((b'SETBIT', key, offset, value), Decoders.int)
 
-    def setex(self, key: ArgType, seconds: Union[int, float], value) -> Result[None]:
+    def setex(self, key: ArgType, seconds: Union[int, float], value: ArgType) -> Result[None]:
         """
         Set the value and expiration of a key.
 

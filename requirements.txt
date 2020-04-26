@@ -1,2 +1,3 @@
+Cython==0.29.16;sys_platform!='win32'
 # -r docs/requirements.txt
 -r tests/requirements.txt

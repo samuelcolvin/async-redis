@@ -64,7 +64,7 @@ class RawConnection:
         await self._writer.drain()
         return [await self._read_result(decoder) for _ in range(len(commands))]
 
-    async def close(self):
+    async def close(self) -> None:
         self._writer.close()
         await self._writer.wait_closed()
 
@@ -84,7 +84,8 @@ class RawConnection:
             if result.__class__ == bytes:
                 return func(result)
             else:
-                return [func(r) for r in result]
+                # result must be a list
+                return [func(r) for r in result]  # type: ignore
 
     def _encode_command(self, buf: bytearray, args: CommandArgs) -> None:
         """
@@ -97,9 +98,9 @@ class RawConnection:
         for arg in args:
             cls = arg.__class__
             if cls == bytes or cls == bytearray:
-                bin_arg: Union[bytes, bytearray] = arg
+                bin_arg: Union[bytes, bytearray] = arg  # type: ignore
             elif cls == str:
-                bin_arg = arg.encode(self._encoding)
+                bin_arg = arg.encode(self._encoding)  # type: ignore
             elif cls == int or cls == float:
                 bin_arg = b'%r' % arg
             else:

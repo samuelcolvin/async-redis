@@ -6,7 +6,15 @@ black = black -S -l 120 --target-version py37 async_redis tests
 install:
 	pip install -U pip setuptools
 	pip install -r requirements.txt
-	#pip install -e .
+	SKIP_CYTHON=1 pip install -e .
+
+.PHONY: compile-trace
+compile-trace:
+	python setup.py build_ext --force --inplace --define CYTHON_TRACE
+
+.PHONY: compile
+compile:
+	python setup.py build_ext --inplace
 
 .PHONY: format
 format:
@@ -46,8 +54,9 @@ clean:
 	rm -rf .mypy_cache
 	rm -rf htmlcov
 	rm -rf *.egg-info
+	rm -rf build
+	rm -rf dist
+	rm -f async_redis/*.c async_redis/*.so
 	rm -f .coverage
 	rm -f .coverage.*
-	rm -rf build
-	make -C docs clean
 	python setup.py clean
