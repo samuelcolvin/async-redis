@@ -78,3 +78,32 @@ jobs:
         env_vars: PYTHON,OS,COMPILED
       env:
         COMPILED: true
+
+  benchmark:
+    name: run benchmarks
+    runs-on: ubuntu-latest
+    env:
+      BENCHMARK_REPEATS: 1
+
+    services:
+      redis:
+        image: redis:5
+        ports:
+        - 6379:6379
+        options: --entrypoint redis-server
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: set up python
+      uses: actions/setup-python@v1
+      with:
+        python-version: '3.8'
+
+    - name: install and compile
+      run: |
+        make install
+        make compile
+        pip install -r benchmarks/requirements.txt
+
+    - run: make benchmark

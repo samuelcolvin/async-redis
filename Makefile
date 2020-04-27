@@ -43,6 +43,10 @@ mypy:
 .PHONY: all
 all: lint mypy testcov
 
+.PHONY: benchmark
+benchmark:
+	python benchmarks/run.py
+
 .PHONY: clean
 clean:
 	rm -rf `find . -name __pycache__`
