@@ -4,7 +4,7 @@ from typing import List, Optional, Sequence, Union
 
 import hiredis
 
-from .typing import CommandArgs, Decoders, ResultType
+from .typing import CommandArgs, ResultType, ReturnAs
 
 __all__ = 'ConnectionSettings', 'create_raw_connection', 'RawConnection'
 
@@ -33,6 +33,9 @@ async def create_raw_connection(conn_settings: ConnectionSettings) -> 'RawConnec
     return RawConnection(reader, writer, conn_settings.encoding)
 
 
+return_as_lookup = {'int': int, 'float': float, 'bool': bool}
+
+
 class RawConnection:
     """
     Low level interface to write to and read from redis.
@@ -49,35 +52,38 @@ class RawConnection:
         self._hi_raw = hiredis.Reader()
         self._hi_enc = hiredis.Reader(encoding=encoding)
 
-    async def execute(self, args: CommandArgs, decoder: Decoders) -> ResultType:
+    async def execute(self, args: CommandArgs, return_as: ReturnAs = None) -> ResultType:
         buf = bytearray()
         self._encode_command(buf, args)
         self._writer.write(buf)
         await self._writer.drain()
-        return await self._read_result(decoder)
+        return await self._read_result(return_as)
 
-    async def execute_many(self, commands: Sequence[CommandArgs], decoder: Decoders) -> List[ResultType]:
+    async def execute_many(self, commands: Sequence[CommandArgs], return_as: ReturnAs = None) -> List[ResultType]:
         buf = bytearray()
         for args in commands:
             self._encode_command(buf, args)
         self._writer.write(buf)
         await self._writer.drain()
-        return [await self._read_result(decoder) for _ in range(len(commands))]
+        return [await self._read_result(return_as) for _ in range(len(commands))]
 
     async def close(self) -> None:
         self._writer.close()
         await self._writer.wait_closed()
 
-    async def _read_result(self, decoder: Decoders) -> ResultType:
-        hi = self._hi_enc if decoder == Decoders.str else self._hi_raw
+    async def _read_result(self, return_as: ReturnAs) -> ResultType:
+        hi = self._hi_enc if return_as == 'str' else self._hi_raw
         result = False
         while result is False:
             raw_line = await self._reader.readline()
             hi.feed(raw_line)
             result = hi.gets()
 
+        if return_as is None:
+            return result
+
         try:
-            func = decoder.func()
+            func = return_as_lookup[return_as]
         except KeyError:
             return result
         else:
@@ -97,12 +103,14 @@ class RawConnection:
 
         for arg in args:
             cls = arg.__class__
-            if cls == bytes or cls == bytearray:
+            if cls in (bytes, bytearray):
                 bin_arg: Union[bytes, bytearray] = arg  # type: ignore
             elif cls == str:
                 bin_arg = arg.encode(self._encoding)  # type: ignore
-            elif cls == int or cls == float:
+            elif cls in (int, float):
                 bin_arg = b'%r' % arg
             else:
-                raise TypeError(f'Argument {arg!r} expected to be a bytearray, bytes, str, float, or int')
+                raise TypeError(
+                    f"Invalid argument: '{arg!r}' {arg.__class__} expected bytearray, bytes, str, float, or int"
+                )
             buf.extend(b'$%d\r\n%s\r\n' % (len(bin_arg), bin_arg))

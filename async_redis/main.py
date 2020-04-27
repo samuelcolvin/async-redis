@@ -4,7 +4,7 @@ from typing import Any, Generator, Optional, Type
 
 from .commands import AbstractCommands
 from .connection import ConnectionSettings, RawConnection, create_raw_connection
-from .typing import CommandArgs, Decoders
+from .typing import CommandArgs, ReturnAs
 
 __all__ = 'Redis', 'connect'
 
@@ -13,9 +13,9 @@ class Redis(AbstractCommands):
     def __init__(self, raw_connection: RawConnection):
         self._conn = raw_connection
 
-    async def execute(self, args: CommandArgs, decoder: Decoders) -> Any:
-        r = await self._conn.execute(args, decoder=decoder)
-        if decoder == Decoders.ok:
+    async def execute(self, args: CommandArgs, return_as: ReturnAs) -> Any:
+        r = await self._conn.execute(args, return_as=return_as)
+        if return_as == 'ok':
             if r != b'OK':
                 raise RuntimeError(f'unexpected result {r!r}')
             return None
