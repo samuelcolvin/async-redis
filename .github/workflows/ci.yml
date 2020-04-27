@@ -44,6 +44,9 @@ jobs:
         make install
         pip freeze
 
+    - name: generate stubs
+      run: make generate-stubs
+
     - name: lint
       run: make lint
 

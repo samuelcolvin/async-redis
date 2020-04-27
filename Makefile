@@ -8,6 +8,10 @@ install:
 	pip install -r requirements.txt
 	SKIP_CYTHON=1 pip install -e .
 
+.PHONY: generate-stubs
+generate-stubs:
+	./tools/generate_stubs.py
+
 .PHONY: compile-trace
 compile-trace:
 	python setup.py build_ext --force --inplace --define CYTHON_TRACE
@@ -41,7 +45,7 @@ mypy:
 	mypy async_redis
 
 .PHONY: all
-all: lint mypy testcov
+all: generate-stubs lint mypy testcov
 
 .PHONY: benchmark
 benchmark:

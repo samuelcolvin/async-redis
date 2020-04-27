@@ -3,8 +3,8 @@ import os
 from datetime import datetime
 from statistics import mean, stdev
 
-from benchmarks.test_async_redis import TestAsyncRedis
-from benchmarks.test_aioredis import TestAioredis
+from test_async_redis import TestAsyncRedis
+from test_aioredis import TestAioredis
 
 
 async def main():

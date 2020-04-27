@@ -4,6 +4,7 @@ from typing import Any, Generator, Optional, Type
 
 from .commands import AbstractCommands
 from .connection import ConnectionSettings, RawConnection, create_raw_connection
+from .pipeline import PipelineContext
 from .typing import CommandArgs, ReturnAs
 
 __all__ = 'Redis', 'connect'
@@ -13,8 +14,10 @@ class Redis(AbstractCommands):
     def __init__(self, raw_connection: RawConnection):
         self._conn = raw_connection
 
-    async def execute(self, args: CommandArgs, return_as: ReturnAs) -> Any:
+    async def _execute(self, args: CommandArgs, return_as: ReturnAs) -> Any:
+        # TODO probably need to shield self._conn.execute to avoid reading part of an answer
         r = await self._conn.execute(args, return_as=return_as)
+        # TODO this needs moving into connections execute
         if return_as == 'ok':
             if r != b'OK':
                 raise RuntimeError(f'unexpected result {r!r}')
@@ -22,8 +25,27 @@ class Redis(AbstractCommands):
         else:
             return r
 
+    def pipeline(self) -> PipelineContext:
+        return PipelineContext(self._conn)
+
     async def close(self) -> None:
         await self._conn.close()
+
+
+def connect(
+    connection_settings: Optional[ConnectionSettings] = None,
+    *,
+    host: str = None,
+    port: int = None,
+    database: int = None,
+) -> 'RedisConnector':
+    if connection_settings:
+        conn_settings = connection_settings
+    else:
+        kwargs = dict(host=host, port=port, database=database)
+        conn_settings = ConnectionSettings(**{k: v for k, v in kwargs.items() if v is not None})  # type: ignore
+
+    return RedisConnector(conn_settings)
 
 
 class RedisConnector:
@@ -56,19 +78,3 @@ class RedisConnector:
             if self.redis is not None:
                 await self.redis.close()
                 self.redis = None
-
-
-def connect(
-    connection_settings: Optional[ConnectionSettings] = None,
-    *,
-    host: str = None,
-    port: int = None,
-    database: int = None,
-) -> RedisConnector:
-    if connection_settings:
-        conn_settings = connection_settings
-    else:
-        kwargs = dict(host=host, port=port, database=database)
-        conn_settings = ConnectionSettings(**{k: v for k, v in kwargs.items() if v is not None})  # type: ignore
-
-    return RedisConnector(conn_settings)

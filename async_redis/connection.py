@@ -1,4 +1,4 @@
-from asyncio import StreamReader, StreamWriter, open_connection
+from asyncio import Lock, StreamReader, StreamWriter, open_connection
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Union
 
@@ -43,7 +43,7 @@ class RawConnection:
     You probably don't want to use this directly
     """
 
-    __slots__ = '_reader', '_writer', '_encoding', '_hi_raw', '_hi_enc'
+    __slots__ = '_reader', '_writer', '_encoding', '_hi_raw', '_hi_enc', '_lock'
 
     def __init__(self, reader: StreamReader, writer: StreamWriter, encoding: str):
         self._reader = reader
@@ -51,25 +51,32 @@ class RawConnection:
         self._encoding = encoding
         self._hi_raw = hiredis.Reader()
         self._hi_enc = hiredis.Reader(encoding=encoding)
+        self._lock = Lock()
 
     async def execute(self, args: CommandArgs, return_as: ReturnAs = None) -> ResultType:
-        buf = bytearray()
-        self._encode_command(buf, args)
-        self._writer.write(buf)
-        await self._writer.drain()
-        return await self._read_result(return_as)
+        async with self._lock:
+            buf = bytearray()
+            self._encode_command(buf, args)
+            self._writer.write(buf)
+            await self._writer.drain()
+            # TODO need a way to check for OK and raise an error if not
+            return await self._read_result(return_as)
 
     async def execute_many(self, commands: Sequence[CommandArgs], return_as: ReturnAs = None) -> List[ResultType]:
-        buf = bytearray()
-        for args in commands:
-            self._encode_command(buf, args)
-        self._writer.write(buf)
-        await self._writer.drain()
-        return [await self._read_result(return_as) for _ in range(len(commands))]
+        # TODO need tuples of command and return_as
+        async with self._lock:
+            buf = bytearray()
+            for args in commands:
+                self._encode_command(buf, args)
+            self._writer.write(buf)
+            await self._writer.drain()
+            # TODO need to raise an error but read all answers first
+            return [await self._read_result(return_as) for _ in range(len(commands))]
 
     async def close(self) -> None:
-        self._writer.close()
-        await self._writer.wait_closed()
+        async with self._lock:
+            self._writer.close()
+            await self._writer.wait_closed()
 
     async def _read_result(self, return_as: ReturnAs) -> ResultType:
         hi = self._hi_enc if return_as == 'str' else self._hi_raw
