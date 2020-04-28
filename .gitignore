@@ -18,3 +18,5 @@ __pycache__/
 .venv/
 /.auto-format
 /async_redis/pipeline_commands.pyi
+/async_redis/*.c
+/async_redis/*.so

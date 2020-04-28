@@ -22,7 +22,9 @@ class ConnectionSettings:
     encoding: str = 'utf8'
 
     def __repr__(self) -> str:
-        return 'RedisSettings({})'.format(', '.join(f'{k}={v!r}' for k, v in self.__dict__.items()))
+        # have to do it this way since asdict and __dict__ on dataclasses don't work with cython
+        fields = 'host', 'port', 'database', 'password', 'encoding'
+        return 'RedisSettings({})'.format(', '.join(f'{f}={getattr(self, f)!r}' for f in fields))
 
 
 async def create_raw_connection(conn_settings: ConnectionSettings) -> 'RawConnection':
