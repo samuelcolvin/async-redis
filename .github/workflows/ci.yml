@@ -86,7 +86,7 @@ jobs:
     name: run benchmarks
     runs-on: ubuntu-latest
     env:
-      BENCHMARK_REPEATS: 1
+      BENCHMARK_REPEATS: 2
 
     services:
       redis:

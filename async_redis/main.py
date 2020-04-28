@@ -13,6 +13,8 @@ __all__ = 'Redis', 'connect'
 
 
 class Redis(AbstractCommands):
+    __slots__ = ('_conn',)
+
     def __init__(self, raw_connection: RawConnection):
         self._conn = raw_connection
 
