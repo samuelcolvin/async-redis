@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 from typing import List, Optional, Sequence, Union
 
@@ -10,7 +12,7 @@ else:
 
 ArgType = Union[bytes, bytearray, str, int, float]
 CommandArgs = Sequence[ArgType]
-ResultTypeScalar = Union[bytes, str, int, float]
+ResultTypeScalar = Union[None, bytes, str, int, float]
 ResultType = Union[ResultTypeScalar, List[ResultTypeScalar]]
 
 ReturnAs = Optional[Literal['ok', 'str', 'int', 'float', 'bool']]

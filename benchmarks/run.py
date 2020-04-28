@@ -3,11 +3,13 @@ import os
 from datetime import datetime
 from statistics import mean, stdev
 
+import uvloop
 from test_async_redis import TestAsyncRedis
 from test_aioredis import TestAioredis
 
 
 async def main():
+    uvloop.install()
     classes = [TestAsyncRedis, TestAioredis]
 
     repeats = int(os.getenv('BENCHMARK_REPEATS', '5'))

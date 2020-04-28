@@ -7,7 +7,7 @@ async def test_connect():
     s = ConnectionSettings()
     conn = await create_raw_connection(s)
     try:
-        r = await conn.execute([b'ECHO', b'hello'], 'bytes')
+        r = await conn.execute([b'ECHO', b'hello'])
         assert r == b'hello'
     finally:
         await conn.close()

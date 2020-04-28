@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from types import TracebackType
 from typing import Any, Generator, Optional, Type
@@ -5,7 +7,7 @@ from typing import Any, Generator, Optional, Type
 from .commands import AbstractCommands
 from .connection import ConnectionSettings, RawConnection, create_raw_connection
 from .pipeline import PipelineContext
-from .typing import CommandArgs, ReturnAs
+from .typing import CommandArgs, ResultType, ReturnAs
 
 __all__ = 'Redis', 'connect'
 
@@ -14,16 +16,9 @@ class Redis(AbstractCommands):
     def __init__(self, raw_connection: RawConnection):
         self._conn = raw_connection
 
-    async def _execute(self, args: CommandArgs, return_as: ReturnAs) -> Any:
+    async def _execute(self, args: CommandArgs, return_as: ReturnAs) -> ResultType:
         # TODO probably need to shield self._conn.execute to avoid reading part of an answer
-        r = await self._conn.execute(args, return_as=return_as)
-        # TODO this needs moving into connections execute
-        if return_as == 'ok':
-            if r != b'OK':
-                raise RuntimeError(f'unexpected result {r!r}')
-            return None
-        else:
-            return r
+        return await self._conn.execute(args, return_as=return_as)
 
     def pipeline(self) -> PipelineContext:
         return PipelineContext(self._conn)

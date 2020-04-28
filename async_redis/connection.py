@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from asyncio import Lock, StreamReader, StreamWriter, open_connection
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Union
@@ -56,10 +58,11 @@ class RawConnection:
         self._lock = Lock()
 
     async def execute(self, args: CommandArgs, return_as: ReturnAs = None) -> ResultType:
+        buf = bytearray()
+        self._encode_command(buf, args)
         async with self._lock:
-            buf = bytearray()
-            self._encode_command(buf, args)
             self._writer.write(buf)
+            del buf
             await self._writer.drain()
             # TODO need a way to check for OK and raise an error if not
             return await self._read_result(return_as)
@@ -82,44 +85,48 @@ class RawConnection:
 
     async def _read_result(self, return_as: ReturnAs) -> ResultType:
         hi = self._hi_enc if return_as == 'str' else self._hi_raw
-        result = False
+        result: Union[bool, bytes, List[bytes]] = False
         while result is False:
             raw_line = await self._reader.readline()
             hi.feed(raw_line)
             result = hi.gets()
 
-        if return_as is None:
-            return result
+        if return_as is None or return_as == 'str':
+            return result  # type: ignore
 
-        try:
-            func = return_as_lookup[return_as]
-        except KeyError:
-            return result
+        if return_as == 'ok':
+            if result != b'OK':
+                raise RuntimeError(f'unexpected result {result!r}')
+            return None
+
+        func = return_as_lookup[return_as]
+        if isinstance(result, bytes):
+            return func(result)
         else:
-            if result.__class__ == bytes:
-                return func(result)
-            else:
-                # result must be a list
-                return [func(r) for r in result]  # type: ignore
+            # result must be a list
+            return [func(r) for r in result]  # type: ignore
 
     def _encode_command(self, buf: bytearray, args: CommandArgs) -> None:
         """
         Encodes arguments into redis bulk-strings array.
 
-        Raises TypeError if any arg is not a bytearray, bytes, str, float, or int.
+        Raises TypeError if any arg is not a bytes, bytearray, str, int, or float.
         """
         buf.extend(b'*%d\r\n' % len(args))
 
         for arg in args:
-            cls = arg.__class__
-            if cls in (bytes, bytearray):
-                bin_arg: Union[bytes, bytearray] = arg  # type: ignore
-            elif cls == str:
-                bin_arg = arg.encode(self._encoding)  # type: ignore
-            elif cls in (int, float):
-                bin_arg = b'%r' % arg
+            if isinstance(arg, bytes):
+                bin_arg = arg
+            elif isinstance(arg, str):
+                bin_arg = arg.encode(self._encoding)
+            elif isinstance(arg, int):
+                bin_arg = b'%d' % arg
+            elif isinstance(arg, float):
+                bin_arg = f'{arg}'.encode('ascii')
+            elif isinstance(arg, bytearray):
+                bin_arg = bytes(arg)
             else:
                 raise TypeError(
-                    f"Invalid argument: '{arg!r}' {arg.__class__} expected bytearray, bytes, str, float, or int"
+                    f"Invalid argument: '{arg!r}' {arg.__class__} expected bytes, bytearray, str, int, or float"
                 )
             buf.extend(b'$%d\r\n%s\r\n' % (len(bin_arg), bin_arg))
