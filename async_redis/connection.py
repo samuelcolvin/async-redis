@@ -4,6 +4,8 @@ from asyncio import Lock, StreamWriter
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from hiredis import hiredis
+
 from .streams import RedisStreamReader, open_connection
 from .typing import CommandArgs, ResultType, ReturnAs
 
@@ -36,6 +38,14 @@ async def create_raw_connection(conn_settings: ConnectionSettings) -> 'RawConnec
     return RawConnection(reader, writer, conn_settings.encoding)
 
 
+default_ok_msg: bytes = b'OK'
+return_as_lookup: Dict[str, Callable[[bytes], Any]] = {
+    'int': int,
+    'float': float,
+    'bool': bool,
+}
+
+
 class RawConnection:
     """
     Low level interface to write to and read from redis.
@@ -43,26 +53,24 @@ class RawConnection:
     You probably don't want to use this directly
     """
 
-    __slots__ = '_reader', '_writer', '_encoding', '_lock', '_return_as_lookup'
+    __slots__ = '_reader', '_writer', '_encoding', '_hi_raw', '_hi_enc', '_lock', '_expected_ok_msg'
 
     def __init__(self, reader: RedisStreamReader, writer: StreamWriter, encoding: str):
         self._reader = reader
         self._writer = writer
         self._encoding = encoding
         self._lock = Lock()
-        self._return_as_lookup: Dict[str, Callable[[bytes], Any]] = {
-            'int': int,
-            'float': float,
-            'bool': bool,
-            'str': self._to_str,
-        }
+        self._hi_raw = reader.hi_reader
+        self._hi_enc = hiredis.Reader(encoding=encoding)
+        self._expected_ok_msg: bytes = default_ok_msg
 
     async def execute(self, args: CommandArgs, return_as: ReturnAs = None) -> ResultType:
         buf = bytearray()
         self._encode_command(buf, args)
-        self._writer.write(buf)
-        del buf
+        self._set_reader_encoding(return_as)
         async with self._lock:
+            self._writer.write(buf)
+            del buf
             await self._writer.drain()
             return await self._read_result(return_as)
 
@@ -71,9 +79,10 @@ class RawConnection:
         buf = bytearray()
         for args in commands:
             self._encode_command(buf, args)
-        self._writer.write(buf)
-        del buf
+        self._set_reader_encoding(None)
         async with self._lock:
+            self._writer.write(buf)
+            del buf
             await self._writer.drain()
             # TODO need to raise an error but read all answers first
             return [await self._read_result(return_as) for _ in range(len(commands))]
@@ -83,18 +92,24 @@ class RawConnection:
             self._writer.close()
             await self._writer.wait_closed()
 
+    def set_ok_msg(self, msg: bytes = default_ok_msg) -> None:
+        self._expected_ok_msg = msg
+
+    def _set_reader_encoding(self, return_as: ReturnAs) -> None:
+        self._reader.hi_reader = self._hi_enc if return_as == 'str' else self._hi_raw
+
     async def _read_result(self, return_as: ReturnAs) -> ResultType:
         result = await self._reader.read_redis()
 
-        if return_as is None:
+        if return_as in (None, 'str'):
             return result
         elif return_as == 'ok':
-            if result != b'OK':
+            if result != self._expected_ok_msg:
                 # TODO this needs to be deferred for execute_many
                 raise RuntimeError(f'unexpected result {result!r}')
             return None
 
-        func = self._return_as_lookup[return_as]
+        func = return_as_lookup[return_as]  # type: ignore
         if isinstance(result, bytes):
             return func(result)
         else:

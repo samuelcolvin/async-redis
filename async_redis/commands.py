@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any, Coroutine, List, Tuple, TypeVar, Union
+from datetime import datetime
+from typing import Any, Coroutine, Dict, List, Optional, Tuple, TypeVar, Union
 
 from .typing import ArgType, CommandArgs, Literal, ReturnAs
+from .utils import apply_callback
 
 __all__ = ('AbstractCommands',)
+
 
 T = TypeVar('T', bytes, str, int, float, 'None')
 Result = Coroutine[Any, Any, T]
@@ -211,3 +214,283 @@ class AbstractCommands:
         Get the length of the value stored in a key.
         """
         return self._execute((b'STRLEN', key), 'int')
+
+    """
+    For commands, see http://redis.io/commands/#server
+    """
+
+    def bgrewriteaof(self) -> Result[None]:
+        """
+        Asynchronously rewrite the append-only file.
+        """
+        return self._execute((b'BGREWRITEAOF',), 'ok')
+
+    def bgsave(self) -> Result[None]:
+        """
+        Asynchronously save the dataset to disk.
+        """
+        return self._execute((b'BGSAVE',), 'ok')
+
+    def client_kill(self, *args: ArgType) -> Result[None]:
+        """
+        Kill the connection of a client.
+        """
+        return self._execute((b'CLIENT KILL', *args), 'ok')
+
+    def client_list(self) -> Result[str]:
+        """
+        Get the list of client connections.
+
+        Returns list of ClientInfo named tuples.
+        """
+        return self._execute((b'CLIENT', b'LIST'), 'str')
+
+    def client_getname(self) -> Result[str]:
+        """
+        Get the current connection name.
+        """
+        return self._execute((b'CLIENT', b'GETNAME'), 'str')
+
+    def client_pause(self, timeout: int) -> Result[int]:
+        """
+        Stop processing commands from clients for *timeout* milliseconds.
+        """
+        return self._execute((b'CLIENT', b'PAUSE', timeout), 'ok')
+
+    def client_reply(self, set: Literal['ON', 'OFF', 'SKIP']) -> Result[None]:
+        """
+        Instruct the server whether to reply to commands
+        """
+        return self._execute((b'CLIENT', b'REPLY', set), 'ok')
+
+    def client_setname(self, name: ArgType) -> Result[None]:
+        """
+        Set the current connection name.
+        """
+        return self._execute((b'CLIENT', b'SETNAME', name), 'ok')
+
+    def command(self) -> Result[List[List[Union[int, str]]]]:
+        """
+        Get array of Redis commands.
+        """
+        return self._execute([b'COMMAND'], 'str')
+
+    def command_count(self) -> Result[int]:
+        """
+        Get total number of Redis commands.
+        """
+        return self._execute((b'COMMAND', b'COUNT'), 'int')
+
+    def command_getkeys(self, command: ArgType, *args: ArgType) -> Result[List[str]]:
+        """
+        Extract keys given a full Redis command.
+        """
+        return self._execute((b'COMMAND', b'GETKEYS', command, *args), 'str')
+
+    def command_info(self, command: ArgType, *commands: ArgType) -> Result[List[List[Union[int, str]]]]:
+        """
+        Get array of specific Redis command details.
+        """
+        return self._execute((b'COMMAND', b'INFO', command, *commands), 'str')
+
+    def config_get(self, parameter: Union[str, bytes] = '*') -> Result[Dict[str, str]]:
+        """
+        Get the value of a configuration parameter(s).
+
+        If called without argument will return all parameters.
+        """
+        return apply_callback(self._execute((b'CONFIG', b'GET', parameter), 'str'), self._config_as_dict)
+
+    @staticmethod
+    def _config_as_dict(v: List[str]) -> Dict[str, str]:
+        it = iter(v)
+        return dict(zip(it, it))
+
+    def config_rewrite(self) -> Result[None]:
+        """
+        Rewrite the configuration file with the in memory configuration.
+        """
+        return self._execute((b'CONFIG', b'REWRITE'), 'ok')
+
+    def config_set(self, parameter: Union[str, bytes], value: ArgType) -> Result[None]:
+        """
+        Set a configuration parameter to the given value.
+        """
+        return self._execute((b'CONFIG', b'SET', parameter, value), 'ok')
+
+    def config_resetstat(self) -> Result[None]:
+        """
+        Reset the stats returned by INFO.
+        """
+        return self._execute((b'CONFIG', b'RESETSTAT',), 'ok')
+
+    def dbsize(self) -> Result[int]:
+        """
+        Return the number of keys in the selected database.
+        """
+        return self._execute((b'DBSIZE',), 'int')
+
+    def debug_sleep(self, timeout: int) -> Result[None]:
+        """
+        Suspend connection for timeout seconds.
+        """
+        return self._execute((b'DEBUG', b'SLEEP', timeout), 'ok')
+
+    def debug_object(self, key: ArgType) -> Result[str]:
+        """
+        Get debugging information about a key.
+        """
+        return self._execute((b'DEBUG', b'OBJECT', key), 'str')
+
+    def debug_segfault(self) -> Result[bytes]:
+        """
+        Make the server crash.
+        """
+        return self._execute((b'DEBUG', b'SEGFAULT'), None)
+
+    def flushall(self, async_: bool = False) -> Result[None]:
+        """
+        Remove all keys from all databases.
+
+        :param async_: lets the entire dataset be freed asynchronously. Defaults False
+        """
+        if async_:
+            return self._execute((b'FLUSHALL', b'ASYNC'), 'ok')
+        else:
+            return self._execute((b'FLUSHALL',), 'ok')
+
+    def flushdb(self, async_: bool = False) -> Result[None]:
+        """
+        Remove all keys from the current database.
+
+        :param async_: lets a single database be freed asynchronously. Defaults False
+        """
+        if async_:
+            return self._execute((b'FLUSHDB', b'ASYNC'), 'ok')
+        else:
+            return self._execute((b'FLUSHDB',), 'ok')
+
+    def info(
+        self,
+        section: Literal[
+            'all',
+            'default',
+            'server',
+            'clients',
+            'memory',
+            'persistence',
+            'stats',
+            'replication',
+            'cpu',
+            'commandstats',
+            'cluster',
+            'keyspace',
+        ] = 'default',
+    ) -> Result[Dict[str, Dict[str, str]]]:
+        """
+        Get information and statistics about the server.
+
+        If called without argument will return default set of sections.
+        """
+        return apply_callback(self._execute((b'INFO', section), 'str'), self._parse_info)
+
+    @staticmethod
+    def _parse_info(info: str) -> Dict[str, Any]:
+        res: Dict[str, Any] = {}
+        for block in info.split('\r\n\r\n'):
+            section, *extra = block.strip().splitlines()
+            section = section[2:].lower()
+            res[section] = tmp = {}
+            for line in extra:
+                value: Union[str, Dict[str, str]]
+                key, value = line.split(':', 1)
+                if ',' in line and '=' in line:
+                    value = dict(i.split('=', 1) for i in value.split(','))  # type: ignore
+                tmp[key] = value
+        return res
+
+    def lastsave(self) -> Result[None]:
+        """
+        Get the UNIX time stamp of the last successful save to disk.
+        """
+        return self._execute((b'LASTSAVE',), None)
+
+    # TODO monitor
+
+    def role(self) -> Result[bytes]:
+        """
+        Return the role of the server instance.
+
+        Returns named tuples describing role of the instance.
+        For fields information see http://redis.io/commands/role#output-format
+        """
+        return self._execute((b'ROLE',), 'str')
+
+    def save(self) -> Result[None]:
+        """
+        Synchronously save the dataset to disk.
+        """
+        return self._execute((b'SAVE',), 'ok')
+
+    def shutdown(self, save: Optional[Literal['save', 'nosave']] = None) -> Result[None]:
+        """
+        Synchronously save the dataset to disk and then shut down the server.
+        """
+        if save == 'save':
+            return self._execute((b'SHUTDOWN', b'SAVE'), 'ok')
+        elif save == 'nosave':
+            return self._execute((b'SHUTDOWN', b'NOSAVE'), 'ok')
+        else:
+            return self._execute((b'SHUTDOWN',), 'ok')
+
+    def slaveof(self, host: Optional[str], port: Optional[str] = None) -> Result[None]:
+        """
+        Make the server a slave of another instance, or promote it as master.
+
+        Calling `slaveof(None)` will send `SLAVEOF NO ONE`.
+        """
+        if host is None:
+            return self._execute((b'SLAVEOF', b'NO', b'ONE'), 'ok')
+        else:
+            command: List[ArgType] = [b'SLAVEOF', host]
+            if port:
+                command.append(port)
+            return self._execute(command, 'ok')
+
+    def slowlog_get(self, length: Optional[int] = None) -> Result[bytes]:
+        """
+        Returns the Redis slow queries log.
+        """
+        command: List[ArgType] = [b'SLOWLOG', b'GET']
+        if length is not None:
+            command.append(length)
+        return self._execute(command, None)
+
+    def slowlog_len(self) -> Result[int]:
+        """
+        Returns length of Redis slow queries log.
+        """
+        return self._execute((b'SLOWLOG', b'LEN'), 'int')
+
+    def slowlog_reset(self) -> Result[None]:
+        """
+        Resets Redis slow queries log.
+        """
+        return self._execute((b'SLOWLOG', b'RESET',), 'ok')
+
+    def sync(self) -> Result[bytes]:
+        """
+        Redis-server internal command used for replication.
+        """
+        return self._execute((b'SYNC',), None)
+
+    def time(self) -> Result[datetime]:
+        """
+        Return current server time.
+        """
+        return apply_callback(self._execute((b'TIME',), 'int'), self._to_time)
+
+    @staticmethod
+    def _to_time(obj: Tuple[int, int]) -> datetime:
+        s, ms = obj
+        return datetime.fromtimestamp(s + ms / 1_000_000)

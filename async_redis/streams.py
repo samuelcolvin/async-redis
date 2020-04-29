@@ -27,7 +27,7 @@ class RedisStreamReader(asyncio.StreamReader):
     this class attempts to keep the flow control logic unchanged
     """
 
-    __slots__ = '_limit', '_loop', '_eof', '_waiter', '_exception', '_transport', '_paused', '_hi_reader'
+    __slots__ = '_limit', '_loop', '_eof', '_waiter', '_exception', '_transport', '_paused', 'hi_reader'
     _source_traceback = None
 
     def __init__(self, limit: int, loop: asyncio.AbstractEventLoop):
@@ -41,7 +41,7 @@ class RedisStreamReader(asyncio.StreamReader):
         self._exception: Optional[Exception] = None
         self._transport: Optional[asyncio.Transport] = None
         self._paused: bool = False
-        self._hi_reader = hiredis.Reader()
+        self.hi_reader = hiredis.Reader()
 
     def feed_data(self, data: bytes) -> None:
         assert not self._eof, 'feed_data after feed_eof'
@@ -49,10 +49,10 @@ class RedisStreamReader(asyncio.StreamReader):
         if not data:
             return
 
-        self._hi_reader.feed(data)
+        self.hi_reader.feed(data)
         self._wakeup_waiter()
 
-        if self._transport is not None and not self._paused and self._hi_reader.len() > 2 * self._limit:
+        if self._transport is not None and not self._paused and self.hi_reader.len() > 2 * self._limit:
             try:
                 self._transport.pause_reading()
             except NotImplementedError:
@@ -71,20 +71,20 @@ class RedisStreamReader(asyncio.StreamReader):
             raise self._exception
 
         while True:
-            obj = self._hi_reader.gets()
+            obj = self.hi_reader.gets()
 
             if obj is not False:
                 self._maybe_resume_transport()
                 return obj
 
             if self._eof:
-                self._hi_reader = hiredis.Reader()
+                self.hi_reader = hiredis.Reader()
                 raise asyncio.IncompleteReadError(b'<redis>', None)
 
             await self._wait_for_data('read_redis')
 
     def _maybe_resume_transport(self) -> None:
-        if self._paused and self._hi_reader.len() <= self._limit:
+        if self._paused and self.hi_reader.len() <= self._limit:
             self._paused = False
             self._transport.resume_reading()  # type: ignore
 
