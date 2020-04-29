@@ -9,7 +9,6 @@ from test_aioredis import TestAioredis
 
 
 async def main():
-    uvloop.install()
     classes = [TestAsyncRedis, TestAioredis]
 
     repeats = int(os.getenv('BENCHMARK_REPEATS', '5'))
@@ -42,4 +41,5 @@ async def main():
 
 
 if __name__ == '__main__':
+    uvloop.install()
     asyncio.run(main())

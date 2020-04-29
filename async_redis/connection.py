@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from asyncio import Lock, StreamReader, StreamWriter, open_connection
+from asyncio import Lock, StreamWriter
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
-import hiredis
-
+from .streams import RedisStreamReader, open_connection
 from .typing import CommandArgs, ResultType, ReturnAs
 
 __all__ = 'ConnectionSettings', 'create_raw_connection', 'RawConnection'
@@ -37,9 +36,6 @@ async def create_raw_connection(conn_settings: ConnectionSettings) -> 'RawConnec
     return RawConnection(reader, writer, conn_settings.encoding)
 
 
-return_as_lookup = {'int': int, 'float': float, 'bool': bool}
-
-
 class RawConnection:
     """
     Low level interface to write to and read from redis.
@@ -47,33 +43,37 @@ class RawConnection:
     You probably don't want to use this directly
     """
 
-    __slots__ = '_reader', '_writer', '_encoding', '_hi_raw', '_hi_enc', '_lock'
+    __slots__ = '_reader', '_writer', '_encoding', '_lock', '_return_as_lookup'
 
-    def __init__(self, reader: StreamReader, writer: StreamWriter, encoding: str):
+    def __init__(self, reader: RedisStreamReader, writer: StreamWriter, encoding: str):
         self._reader = reader
         self._writer = writer
         self._encoding = encoding
-        self._hi_raw = hiredis.Reader()
-        self._hi_enc = hiredis.Reader(encoding=encoding)
         self._lock = Lock()
+        self._return_as_lookup: Dict[str, Callable[[bytes], Any]] = {
+            'int': int,
+            'float': float,
+            'bool': bool,
+            'str': self._to_str,
+        }
 
     async def execute(self, args: CommandArgs, return_as: ReturnAs = None) -> ResultType:
         buf = bytearray()
         self._encode_command(buf, args)
+        self._writer.write(buf)
+        del buf
         async with self._lock:
-            self._writer.write(buf)
-            del buf
             await self._writer.drain()
-            # TODO need a way to check for OK and raise an error if not
             return await self._read_result(return_as)
 
     async def execute_many(self, commands: Sequence[CommandArgs], return_as: ReturnAs = None) -> List[ResultType]:
         # TODO need tuples of command and return_as
+        buf = bytearray()
+        for args in commands:
+            self._encode_command(buf, args)
+        self._writer.write(buf)
+        del buf
         async with self._lock:
-            buf = bytearray()
-            for args in commands:
-                self._encode_command(buf, args)
-            self._writer.write(buf)
             await self._writer.drain()
             # TODO need to raise an error but read all answers first
             return [await self._read_result(return_as) for _ in range(len(commands))]
@@ -84,27 +84,26 @@ class RawConnection:
             await self._writer.wait_closed()
 
     async def _read_result(self, return_as: ReturnAs) -> ResultType:
-        hi = self._hi_enc if return_as == 'str' else self._hi_raw
-        result: Union[bool, bytes, List[bytes]] = False
-        while result is False:
-            raw_line = await self._reader.readline()
-            hi.feed(raw_line)
-            result = hi.gets()
+        result = await self._reader.read_redis()
 
-        if return_as is None or return_as == 'str':
-            return result  # type: ignore
-
-        if return_as == 'ok':
+        if return_as is None:
+            return result
+        elif return_as == 'ok':
             if result != b'OK':
+                # TODO this needs to be deferred for execute_many
                 raise RuntimeError(f'unexpected result {result!r}')
             return None
 
-        func = return_as_lookup[return_as]
+        func = self._return_as_lookup[return_as]
         if isinstance(result, bytes):
             return func(result)
         else:
             # result must be a list
-            return [func(r) for r in result]  # type: ignore
+            return [func(r) for r in result]
+
+    def _to_str(self, b: bytes) -> str:
+        # TODO might be possible to change this once https://github.com/redis/hiredis-py/pull/96 gets released
+        return b.decode(self._encoding)
 
     def _encode_command(self, buf: bytearray, args: CommandArgs) -> None:
         """

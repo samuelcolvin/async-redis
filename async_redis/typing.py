@@ -12,7 +12,6 @@ else:
 
 ArgType = Union[bytes, bytearray, str, int, float]
 CommandArgs = Sequence[ArgType]
-ResultTypeScalar = Union[None, bytes, str, int, float]
-ResultType = Union[ResultTypeScalar, List[ResultTypeScalar]]
+ResultType = Union[None, bytes, str, int, float, List[bytes], List[str], List[int], List[float]]
 
 ReturnAs = Optional[Literal['ok', 'str', 'int', 'float', 'bool']]
